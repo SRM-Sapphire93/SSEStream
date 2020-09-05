@@ -1,104 +1,107 @@
 #pragma once
-#include "Headers.h"
-#include "Latch.h"
+
 /*---------------------------------------------------------------------*/
-/*수신버퍼의 데이터-> CStream-> CPacket -> 로직 수행.
-/*CPacket-> CStream -> 송신버퍼의 데이터
+/*수신시 : 수신버퍼의 데이터-> 직렬화스트림-> 패킷으로변환 -> 로직 수행.
+/*송신시 : 스트림에 값을 채우고 -> 송신버퍼로 전송.
+/*주의 !!! : 다수의 입출력 스레드를 사용시 반드시 RC사용할것 .이후 송신 완료 바이트 숫자를 확인해서*/
+/*스트림객체의 카운팅을 감소시키고 그것에 따라서 다시 메모리풀에 넣어야한다. */
 /*---------------------------------------------------------------------*/
 
 
-
-
-
-class CStream
+namespace SSE
 {
-public : 
 
-    int m_nOffsetOut = 0;
-    vector<char> m_buffer;
-    CRITICAL_SECTION m_CS;
-    int m_nRefCnt = 0;
+	class CSSEStream
+	{
+	public:
+
+		int m_nOffsetOut = 0;
+		vector<char> m_buffer;
+		CRITICAL_SECTION m_CS;
+		int m_nRefCnt = 0;
 
 
-public:
+	public:
 
-    void Append(const void * data, int size);
-    void Clear();
-    size_t GetSize() { return m_buffer.size();}
-    char* GetData() { return &(m_buffer[0]); }
+		void Append(const void * data, int size);
+		void Clear();
+		size_t GetSize() { return m_buffer.size(); }
+		char* GetData() { return &(m_buffer[0]); }
 
-    int  GetRefCnt() { return m_nRefCnt; }
-    void AddRefCnt() { ++m_nRefCnt; }
-    void SubRefCnt()
-    {
-        LOCKNOW(&m_CS)
-        {
-            m_nRefCnt--;
-        }
-    }
+		int  GetRefCnt() { return m_nRefCnt; }
+		void AddRefCnt() { ++m_nRefCnt; }
+		void SubRefCnt()
+		{
+			LOCKNOW(&m_CS)
+			{
+				m_nRefCnt--;
+			}
+		}
 
-    void Ready_SendOrder(SendOrder& S);
-   
-    CStream& operator <<(int Data);
-    CStream& operator <<(short& Data);
-    CStream& operator <<(unsigned int& Data);
-    
-    CStream& operator <<(const wstring& Data);
-    CStream& operator <<(InGameInfo& Data);
-    CStream& operator <<(float& Data);
-    template <typename T>
-    CStream& operator <<(const vector<T>& Data)
-    {
-        unsigned int S = Data.size();
-        *this << S;
+		void Ready_SendOrder(SendOrder& S);
 
-        if (S == 0)
-            return *this;
+		CSSEStream& operator <<(int Data);
+		CSSEStream& operator <<(short& Data);
+		CSSEStream& operator <<(unsigned int& Data);
 
-        char* p = (char*)Data.data();
-        Append(p, sizeof(T) * S);
+		CSSEStream& operator <<(const wstring& Data);
+		CSSEStream& operator <<(float& Data);
+		template <typename T>
+		CSSEStream& operator <<(const vector<T>& Data)
+		{
+			unsigned int S = Data.size();
+			*this << S;
 
-        return *this;
-    }
+			if (S == 0)
+				return *this;
 
-    CStream& operator >>(int& Data);
-    CStream& operator >>(short& Data);
-    CStream& operator >>(unsigned int& Data);
-    
-    CStream& operator >>(InGameInfo& Data);
-    CStream& operator >>(wstring& Data);
-    CStream& operator >>(float& Data);
+			char* p = (char*)Data.data();
+			Append(p, sizeof(T) * S);
 
-    template <typename T>
-    CStream& operator >>(vector<T>& Data)
-    {
-        unsigned int S;
-        *this >> S; 
-        for (unsigned int i = 0; i < S; ++i)
-        {
-            Data.push_back( *( (T*)(&m_buffer[m_nOffsetOut]) ) );
-            m_nOffsetOut += sizeof(T);
-        }
+			return *this;
+		}
 
-        return *this;
-    }
+		CSSEStream& operator >>(int& Data);
+		CSSEStream& operator >>(short& Data);
+		CSSEStream& operator >>(unsigned int& Data);
 
-    
 
-    CStream()
-    {
-        InitializeCriticalSection(&m_CS);
-    }
-    virtual ~CStream()
-    {
-        LOCKNOW(&m_CS)
-        {
+		CSSEStream& operator >>(wstring& Data);
+		CSSEStream& operator >>(float& Data);
 
-        }
+		template <typename T>
+		CSSEStream& operator >>(vector<T>& Data)
+		{
+			unsigned int S;
+			*this >> S;
+			for (unsigned int i = 0; i < S; ++i)
+			{
+				Data.push_back(*((T*)(&m_buffer[m_nOffsetOut])));
+				m_nOffsetOut += sizeof(T);
+			}
 
-        DeleteCriticalSection(&m_CS);
-    }
-};
+			return *this;
+		}
+
+
+
+		CSSEStream()
+		{
+			InitializeCriticalSection(&m_CS);
+		}
+		virtual ~CSSEStream()
+		{
+			LOCKNOW(&m_CS)
+			{
+
+			}
+
+			DeleteCriticalSection(&m_CS);
+		}
+	};
+
+
+}
 
 
 
